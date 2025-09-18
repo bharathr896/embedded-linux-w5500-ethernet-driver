@@ -6,11 +6,21 @@
 #include "w5500.h"
 
 
+/*
+* Probe
+* Flow:
+*   1. Allocate private struct
+*   2. Fetch GPIO + IRQ from Device Tree
+*   3. Reset chip if reset GPIO available
+*   4. Test SPI by reading VERSIONR
+*/
+
 static int	w5500_probe(struct spi_device *spi){
 
     struct device *dev = &spi->dev;
     struct w5500_priv *priv;
     int ret;
+    u8 version;
 
     priv = devm_kzalloc(dev,sizeof(struct w5500_priv),GFP_KERNEL);
     if(!priv){
@@ -43,6 +53,20 @@ static int	w5500_probe(struct spi_device *spi){
         if(ret){
             return ret;
         }
+    }
+
+    /* Read version */
+    ret = w5500_spi_read8(priv,W5500_VERSIONR,&version);
+    if(ret){
+        dev_err(dev,"Failed to read VERSIONR\n");
+        return ret;
+    }
+
+    if(version==0x04){
+        dev_info(dev,"VERSION = 0x%02x (OK) \n",version);
+    }
+    else{
+        dev_warn(dev,"VERSION = 0x%02x (unexpected, expected 0x04)\n",version);
     }
 
     dev_info(dev,"W5500 probe finished successfully \n");
