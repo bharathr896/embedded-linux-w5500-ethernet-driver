@@ -2,6 +2,7 @@
 #define _W5500_H_
 
 #include <linux/spi/spi.h>
+#include <linux/skbuff.h>
 #include <linux/gpio/consumer.h>
 
 /* W5500 Register Blocks */
@@ -24,8 +25,11 @@
 
 struct w5500_priv {
     struct spi_device *spi; /* Spi Device Pointer */
+    struct net_device *netdev; 
     struct gpio_desc *reset_gpio; /* Reset Pin */
-    int irq;   /* Interrupt line */
+    unsigned int irq;   /* Interrupt line */
+
+    spinlock_t lock;
 };
 
 int w5500_hw_reset(struct w5500_priv *priv);
@@ -35,6 +39,9 @@ int w5500_hw_reset(struct w5500_priv *priv);
 void w5500_build_header(u16 addr, u8 block, bool write, u8 om, u8 *header);
 int w5500_spi_read8(struct w5500_priv *priv, u16 addr, u8 *val);
 int w5500_spi_write8(struct w5500_priv *priv, u16 addr, u8 val);
+int w5500_spi_read_bulk(struct w5500_priv *priv, u16 addr, u8 *buf, size_t len);
+int w5500_spi_write_bulk(struct w5500_priv *priv, u16 addr, const u8 *buf, size_t len);
 
+int w5500_tx_frame(struct w5500_priv *priv, struct sk_buff *skb);
 
 #endif

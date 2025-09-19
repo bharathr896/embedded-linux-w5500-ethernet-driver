@@ -137,3 +137,88 @@ int w5500_spi_write8(struct w5500_priv *priv, u16 addr, u8 val){
 
     return 0;
 }
+
+/*
+* Read multiple bytes from W5500
+*
+* Flow:
+*   1. Build 3-byte header
+*   2. Send header
+*   3. Clock out 'len' dummy bytes while filling 'buf'
+*
+* Returns:
+*   0 on success, negative errno on failure
+*/
+int w5500_spi_read_bulk(struct w5500_priv *priv, u16 addr, u8 *buf, size_t len)
+{
+    u8 header[3];
+    struct spi_transfer xfers[2] = { };
+    struct spi_message msg;
+    int ret;
+
+    w5500_build_header(addr, W5500_BLOCK_COMMON, false, W5500_OM_VDM, header);
+
+    spi_message_init(&msg);
+
+    //header first
+    xfers[0].tx_buf = header;
+    xfers[0].len = 3;
+    spi_message_add_tail(&xfers[0], &msg);
+
+    //data read
+    xfers[1].rx_buf = buf;
+    xfers[1].len = len;
+    spi_message_add_tail(&xfers[1], &msg);
+
+    ret = spi_sync(priv->spi, &msg);
+    if (ret < 0) {
+        dev_err(&priv->spi->dev, "SPI read_bulk failed (0x%04x) len=%zu err=%d\n",
+                addr, len, ret);
+        return ret;
+    }
+
+    return 0;
+}
+
+/*
+* Write multiple bytes to W5500
+*
+* Flow:
+*   1. Allocate buffer = header (3 bytes) + data (len bytes)
+*   2. Fill header
+*   3. Copy payload after header
+*   4. Send in one transaction
+*   5. Free temporary buffer
+*
+* Returns:
+*   0 on success, negative errno on failure
+*/
+
+int w5500_spi_write_bulk(struct w5500_priv *priv, u16 addr, const u8 *buf, size_t len)
+{
+    u8 *tx;
+    struct spi_transfer xfer = { };
+    struct spi_message msg;
+    int ret;
+
+    tx = kmalloc(len + 3, GFP_KERNEL);
+    if (!tx)
+        return -ENOMEM;
+
+    // Header + payload
+    w5500_build_header(addr, W5500_BLOCK_COMMON, true, W5500_OM_VDM, tx);
+    memcpy(&tx[3], buf, len);
+
+    spi_message_init(&msg);
+    xfer.tx_buf = tx;
+    xfer.len = len + 3;
+    spi_message_add_tail(&xfer, &msg);
+
+    ret = spi_sync(priv->spi, &msg);
+    if (ret < 0)
+        dev_err(&priv->spi->dev, "SPI write_bulk failed (0x%04x) len=%zu err=%d\n",
+                addr, len, ret);
+
+    kfree(tx);
+    return ret;
+}
